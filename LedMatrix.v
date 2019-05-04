@@ -8,8 +8,8 @@ module LedMatrix
   input  cs,
   input  sclk,
   input  mosi,
-  output [103:0] columns,
-  output [15:0] rows
+  output reg [103:0] columns,
+  output reg [15:0] rows
 );
 /*
 Pixels information is stored in bytes. The following order is applied:
@@ -25,7 +25,7 @@ reg  [12:0]   scan_rate_counter     = 13'd0;
 reg  [7:0]    intensity             = 8'd0;
 reg  [7:0]    column_idx            = 8'd0;
 wire [3:0]    active_row            = scan_rate_counter[12:9];
-wire [7:0]    pwm_counter           = scan_rate_counter[9:2];
+wire [7:0]    pwm_counter           = scan_rate_counter[8:1];
 wire [7:0]    address               = spi_shift_register[15:8];
 wire [7:0]    data                  = spi_shift_register[7:0];
 wire [3:0]    row_idx               = address[3:0];
@@ -34,9 +34,10 @@ wire [3:0]    column_byte_idx       = address[7:4];
 
 // Reading the mosi line and store the data
 always@(posedge sclk) begin
-  if(!cs)
+  if(!cs) begin
     spi_shift_register = spi_shift_register << 1;
     spi_shift_register[0] = mosi;
+  end
 end
   
 // Process input data frame
@@ -47,41 +48,62 @@ always@(posedge cs) begin
   else if( column_byte_idx <= `MAX_COL_IDX ) begin
     column_idx = 8'd0;
     column_idx[6:3] = column_byte_idx;
-    column_idx = 8'd103 - column_idx;
-    pixels[row_idx][column_idx -: 8] = data;
+    pixels[row_idx][column_idx +: 8] = ~data;
   end
 end
 
-// Create scan rate
+// Create scan rate and update column and row latches
 always@(posedge clk) begin
-  scan_rate_counter <= scan_rate_counter + 13'd1;
+  if(pwm_counter <= intensity) begin
+    columns = pixels[active_row];
+    case (active_row)
+      0:  rows = 16'b1111111111111110;
+      1:  rows = 16'b1111111111111101;
+      2:  rows = 16'b1111111111111011;
+      3:  rows = 16'b1111111111110111;
+      4:  rows = 16'b1111111111101111;
+      5:  rows = 16'b1111111111011111;
+      6:  rows = 16'b1111111110111111;
+      7:  rows = 16'b1111111101111111;
+      8:  rows = 16'b1111111011111111;
+      9:  rows = 16'b1111110111111111;
+      10: rows = 16'b1111101111111111;
+      11: rows = 16'b1111011111111111;
+      12: rows = 16'b1110111111111111;
+      13: rows = 16'b1101111111111111;
+      14: rows = 16'b1011111111111111;
+      15: rows = 16'b0111111111111111;
+      default: rows = ~(16'd0);
+    endcase
+  end
+  else begin
+    columns = ~(104'd0);
+    rows = ~(16'd0);
+  end
+  scan_rate_counter = scan_rate_counter + 13'd1;
 end
-
-// Update columns
-assign columns = ( pwm_counter <= intensity ) ? ~(pixels[active_row]) : ~(104'd0);
-
-// Update rows
-assign rows = ~( 16'b0000000000000001 << active_row );
-
 
 initial begin
-  pixels[0] = 103'd0;
-  pixels[1] = 103'd0;
-  pixels[2] = 103'd0;
-  pixels[3] = 103'd0;
-  pixels[4] = 103'd0;
-  pixels[5] = 103'd0;
-  pixels[6] = 103'd0;
-  pixels[7] = 103'd0;
-  pixels[8] = 103'd0;
-  pixels[9] = 103'd0;
-  pixels[10] = 103'd0;
-  pixels[11] = 103'd0;
-  pixels[12] = 103'd0;
-  pixels[13] = 103'd0;
-  pixels[14] = 103'd0;
-  pixels[15] = 103'd0;
+  rows       = ~(16'd0);
+  columns    = ~(104'd0);
+  pixels[0]  = ~(104'd0);
+  pixels[1]  = ~(104'd0);
+  pixels[2]  = ~(104'd0);
+  pixels[3]  = ~(104'd0);
+  pixels[4]  = ~(104'd0);
+  pixels[5]  = ~(104'd0);
+  pixels[6]  = ~(104'd0);
+  pixels[7]  = ~(104'd0);
+  pixels[8]  = ~(104'd0);
+  pixels[9]  = ~(104'd0);
+  pixels[10] = ~(104'd0);
+  pixels[11] = ~(104'd0);
+  pixels[12] = ~(104'd0);
+  pixels[13] = ~(104'd0);
+  pixels[14] = ~(104'd0);
+  pixels[15] = ~(104'd0);
 end
+
 endmodule
 
 
@@ -95,9 +117,8 @@ wire [15:0]  rows;
 
 // Create clock with 5.3MHz
 always #90.909 clk = ~clk;
-//always #50    sclk = ~sclk;
 parameter clk_period = 181.818;
-parameter sclk_half_period = 50;
+parameter sclk_half_period = 500; // Simulate 1MHz SPI clock
 
 LedMatrix DUT (.clk(clk), .cs(cs), .sclk(sclk), .mosi(mosi), .columns(columns), .rows(rows));
 
